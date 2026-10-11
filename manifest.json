@@ -1,0 +1,23 @@
+{
+  "upstream_repository": "herbrine8403/Amethyst-iOS-MyRemastered",
+  "upstream_commit": "70b8bea76a0ac97483b3e86b54330dfef948cb07",
+  "source_archive": "Amethyst-iOS-MyRemastered-5.1.0.zip",
+  "files": {
+    "Natives/LauncherRightPanelViewController.m": {
+      "original_sha256": "49c12dbd0fc040411b26b804792d6a7b6c664644b9d9cf76f0e3ad8e00a6f133",
+      "patched_sha256": "d3849727586ef625bab79f81390188244f0ab69a46c6e5192ff2564bf25598f6"
+    },
+    "Natives/LauncherNavigationController.m": {
+      "original_sha256": "4da71376e159c7db3a988c8cae4729653eee120663c291c0ad162cd1e6556937",
+      "patched_sha256": "d0a697bd21b620d77c386dc75cb2db385ef4e803ce5692c2f63ea6f89877ab0f"
+    },
+    "Natives/DownloadViewController.m": {
+      "original_sha256": "667b2608ddbb65469a5c267bb411a07ef8a6a492b87b6c77f52301b785c641db",
+      "patched_sha256": "fa33d50fe07c4877bcbd2b572808d0979e2cf91da8cbfb649afc0ac092b8e986"
+    },
+    "Natives/JavaLauncher.m": {
+      "original_sha256": "603c571033fa016aec75d332337649c47c7f64d1abb1cb53721b7f5c866e1a84",
+      "patched_sha256": "c7bee4d7b8588507de2eacfe47f187deb09f917d569cc1dc3abbe2fa4b546a56"
+    }
+  }
+}

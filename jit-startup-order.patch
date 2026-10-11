@@ -1,0 +1,169 @@
+--- a/Natives/LauncherRightPanelViewController.m
++++ b/Natives/LauncherRightPanelViewController.m
+@@ -687,10 +687,10 @@
+ - (void)updateJITStatus {
+     if (!self.jitStatusLabel) return;
+     BOOL enabled = isJITEnabled(NO);
+-    // 三态显示（议题 #133）：TXM 机型上 JIT 可能"已启用"（CS_DEBUGGED 置位）
++    // 三态显示：需要调试器映射的设备上 JIT 可能"已启用"（CS_DEBUGGED 置位）
+     // 而服务 brk #0x69 的调试器已脱离——这是预期可恢复状态（启动时自动重附加），
+     // 用琥珀色区别于红色"未开启"，两边都不误报。
+-    if (enabled && DeviceHasJITFlags(JIT_FLAG_FORCE_MIRRORED | JIT_FLAG_HAS_TXM) &&
++    if (enabled && DeviceNeedsDebugJITMapping() &&
+         !JIT26IsLikelyDebuggerKeepAttached()) {
+         self.jitStatusLabel.text = localize(@"i18n_str_jit26_pending", nil);
+         self.jitStatusLabel.textColor = [UIColor colorWithRed:0.95 green:0.75 blue:0.2 alpha:1.0];
+@@ -1206,15 +1206,16 @@
+ }
+ 
+ - (void)invokeAfterJITEnabled:(void(^)(void))handler {
++    // External JIT may have changed since the status view cached the flags.
++    // Use the same capability decision as launchJVM, including non-TXM devices.
++    DeviceGetJITFlags(YES);
+     BOOL hasTrollStoreJIT = getEntitlementValue(@"jb.pmap_cs.custom_trust");
+     
+     if (isJITEnabled(false)) {
+         [ALTServerManager.sharedManager stopDiscovering];
+-        // TXM 机型（议题 #133）：CS_DEBUGGED 置位只证明"曾经启用过"，外部工具
+-        // 退出后调试器早已脱离（ppid=1、无 P_TRACED、无异常端口），此时直接启动
+-        // 会在 launchJVM 的 brk #0x69 上 EXC_BREAKPOINT 闪退。探针全无时先经
+-        // stikjit:// 把 UniversalJIT26 脚本重附加，等调试器真正存活再启动。
+-        if (DeviceHasJITFlags(JIT_FLAG_FORCE_MIRRORED | JIT_FLAG_HAS_TXM) &&
++        // CS_DEBUGGED does not prove that the script is still attached.
++        // Every device requiring debugger mapping must use the reattach path.
++        if (DeviceNeedsDebugJITMapping() &&
+             !JIT26IsLikelyDebuggerKeepAttached() &&
+             !getPrefBool(@"debug.jit26_script_disable")) {
+             NSLog(@"[JIT] [RightPanel] CS_DEBUGGED set but no live JIT26 debugger (ppid=%d traced=%d exn=%d) -- re-attaching",
+@@ -1222,7 +1223,8 @@
+             [self jit_reattachJIT26ThenLaunch:handler];
+             return;
+         }
+-        NSLog(@"[JIT] [RightPanel] JIT enabled with live JIT26 debugger, launching directly");
++        NSLog(@"[JIT] [RightPanel] JIT flag set; continuing to JVM script verification (needsDebugMapping=%d)",
++              DeviceNeedsDebugJITMapping());
+         handler();
+         return;
+     } else if (hasTrollStoreJIT) {
+@@ -1272,11 +1274,12 @@
+                 jit_bgt = UIBackgroundTaskInvalid;
+             }
+             if (ok) {
++                DeviceGetJITFlags(YES);
+                 // 后台态 dismiss 的 completion 可能悬空，completion:nil + 直接执行。
+                 [alert dismissViewControllerAnimated:YES completion:nil];
+-                // 等待成功不等于能安全启动：TXM 上调试器可能在等待期间再次脱离，
++                // 等待成功不等于能安全启动：需要脚本的设备上调试器可能再次脱离，
+                 // 存活性复查不过就重挂。
+-                if (DeviceHasJITFlags(JIT_FLAG_FORCE_MIRRORED | JIT_FLAG_HAS_TXM) &&
++                if (DeviceNeedsDebugJITMapping() &&
+                     !JIT26IsLikelyDebuggerKeepAttached() &&
+                     !getPrefBool(@"debug.jit26_script_disable")) {
+                     NSLog(@"[JIT] [RightPanel] wait satisfied but JIT26 debugger is gone -- re-attaching before launch");
+--- a/Natives/LauncherNavigationController.m
++++ b/Natives/LauncherNavigationController.m
+@@ -654,6 +654,9 @@
+ }
+ 
+ - (void)invokeAfterJITEnabled:(void(^)(void))handler {
++    // External JIT may have changed since the status view cached the flags.
++    // Use the same capability decision as launchJVM, including non-TXM devices.
++    DeviceGetJITFlags(YES);
+     // 注意：不要在此清空 localVersionList/remoteVersionList
+     // 该方法既被 JAR 执行调用，也被正常启动游戏调用；清空会导致用户返回后版本列表为空、
+     // buttonInstall 短暂不可用。版本列表的生命周期应由 reloadProfileList 统一管理。
+@@ -661,9 +664,9 @@
+ 
+     if (isJITEnabled(false)) {
+         [ALTServerManager.sharedManager stopDiscovering];
+-        // TXM 机型（议题 #133）：CS_DEBUGGED 置位只证明"曾经启用过"，调试器脱离后
+-        // 直接启动会在 launchJVM 的 brk #0x69 上闪退。探针全无时先重附加脚本。
+-        if (DeviceHasJITFlags(JIT_FLAG_FORCE_MIRRORED | JIT_FLAG_HAS_TXM) &&
++        // CS_DEBUGGED does not prove that the script is still attached.
++        // Every device requiring debugger mapping must use the reattach path.
++        if (DeviceNeedsDebugJITMapping() &&
+             !JIT26IsLikelyDebuggerKeepAttached() &&
+             !getPrefBool(@"debug.jit26_script_disable")) {
+             NSLog(@"[JIT] [NavCtrl] CS_DEBUGGED set but no live JIT26 debugger (ppid=%d traced=%d exn=%d) -- re-attaching",
+@@ -671,7 +674,8 @@
+             [self jit_reattachJIT26ThenLaunch:handler];
+             return;
+         }
+-        NSLog(@"[JIT] [NavCtrl] JIT enabled with live JIT26 debugger, launching directly");
++        NSLog(@"[JIT] [NavCtrl] JIT flag set; continuing to JVM script verification (needsDebugMapping=%d)",
++              DeviceNeedsDebugJITMapping());
+         handler();
+         return;
+     } else if (hasTrollStoreJIT) {
+@@ -725,8 +729,9 @@
+                 jit_bgt = UIBackgroundTaskInvalid;
+             }
+             if (ok) {
++                DeviceGetJITFlags(YES);
+                 [alert dismissViewControllerAnimated:YES completion:nil];
+-                if (DeviceHasJITFlags(JIT_FLAG_FORCE_MIRRORED | JIT_FLAG_HAS_TXM) &&
++                if (DeviceNeedsDebugJITMapping() &&
+                     !JIT26IsLikelyDebuggerKeepAttached() &&
+                     !getPrefBool(@"debug.jit26_script_disable")) {
+                     NSLog(@"[JIT] [NavCtrl] wait satisfied but JIT26 debugger is gone -- re-attaching before launch");
+--- a/Natives/DownloadViewController.m
++++ b/Natives/DownloadViewController.m
+@@ -3717,13 +3717,16 @@
+ }
+ 
+ - (void)invokeAfterJITEnabled:(void(^)(void))handler {
++    // External JIT may have changed since the status view cached the flags.
++    // Use the same capability decision as launchJVM, including non-TXM devices.
++    DeviceGetJITFlags(YES);
+     BOOL hasTrollStoreJIT = getEntitlementValue(@"jb.pmap_cs.custom_trust");
+     
+     if (isJITEnabled(false)) {
+         [ALTServerManager.sharedManager stopDiscovering];
+-        // TXM 机型（议题 #133）：CS_DEBUGGED 置位只证明"曾经启用过"，调试器脱离后
+-        // 直接启动会在 launchJVM 的 brk #0x69 上闪退。探针全无时先重附加脚本。
+-        if (DeviceHasJITFlags(JIT_FLAG_FORCE_MIRRORED | JIT_FLAG_HAS_TXM) &&
++        // CS_DEBUGGED does not prove that the script is still attached.
++        // Every device requiring debugger mapping must use the reattach path.
++        if (DeviceNeedsDebugJITMapping() &&
+             !JIT26IsLikelyDebuggerKeepAttached() &&
+             !getPrefBool(@"debug.jit26_script_disable")) {
+             NSLog(@"[JIT] [DownloadVC] CS_DEBUGGED set but no live JIT26 debugger (ppid=%d traced=%d exn=%d) -- re-attaching",
+@@ -3731,7 +3734,8 @@
+             [self jit_reattachJIT26ThenLaunch:handler];
+             return;
+         }
+-        NSLog(@"[JIT] [DownloadVC] JIT enabled with live JIT26 debugger, launching directly");
++        NSLog(@"[JIT] [DownloadVC] JIT flag set; continuing to JVM script verification (needsDebugMapping=%d)",
++              DeviceNeedsDebugJITMapping());
+         handler();
+         return;
+     } else if (hasTrollStoreJIT) {
+@@ -3780,8 +3784,9 @@
+                 jit_bgt = UIBackgroundTaskInvalid;
+             }
+             if (ok) {
+-                // 等待成功不等于能安全启动：TXM 上调试器可能再次脱离，复查不过就重挂。
+-                if (DeviceHasJITFlags(JIT_FLAG_FORCE_MIRRORED | JIT_FLAG_HAS_TXM) &&
++                DeviceGetJITFlags(YES);
++                // 等待成功不等于脚本就绪；所有需要调试器映射的设备都要复查。
++                if (DeviceNeedsDebugJITMapping() &&
+                     !JIT26IsLikelyDebuggerKeepAttached() &&
+                     !getPrefBool(@"debug.jit26_script_disable")) {
+                     NSLog(@"[JIT] [DownloadVC] wait satisfied but JIT26 debugger is gone -- re-attaching before launch");
+--- a/Natives/JavaLauncher.m
++++ b/Natives/JavaLauncher.m
+@@ -2238,11 +2238,12 @@
+     DeviceGetJITFlags(YES);
+     BOOL requiresDebugJITMapping = DeviceNeedsDebugJITMapping();
+     BOOL jit26AlwaysAttached = getPrefBool(@"debug.debug_always_attached_jit");
+-    // Task 139（参照 Air）：TXM 再附。CS_DEBUGGED 只证明 JIT 曾为本进程开启过；
++    // Debugger mapping may also be required without TXM. CS_DEBUGGED only
++    // records a previous attach; it does not guarantee a live script.
+     // 调试器离场后下方 Safe 探针的 brk #0x69 无人应答。无活跃调试器且脚本
+     // 未禁用时，先经 stikjit:// 带脚本再附并有界等待；成败都继续走下方
+     // Safe 探针（失败会优雅报错而非闪退，与 Air 同构）。
+-    if (DeviceHasJITFlags(JIT_FLAG_FORCE_MIRRORED | JIT_FLAG_HAS_TXM) &&
++    if (requiresDebugJITMapping &&
+         !JIT26IsLikelyDebuggerKeepAttached() &&
+         !getPrefBool(@"debug.jit26_script_disable")) {
+         NSLog(@"[JIT] [Headless] Task139: CS_DEBUGGED set but no live JIT26 debugger — re-attaching script via stikjit://");

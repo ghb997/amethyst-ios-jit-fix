@@ -1,0 +1,127 @@
+name: Build Amethyst JIT fix IPA
+
+on:
+  push:
+    branches: [codex/jit-startup-fix]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ipa-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  GIT_LFS_SKIP_SMUDGE: "1"
+  IPHONEOS_DEPLOYMENT_TARGET: "14.0"
+
+jobs:
+  build:
+    name: Full iOS IPA with JIT fix
+    runs-on: macos-14
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout build configuration
+        uses: actions/checkout@v4
+        with:
+          path: build-config
+          persist-credentials: false
+
+      - name: Checkout pinned Amethyst 5.1.0 source
+        uses: actions/checkout@v4
+        with:
+          repository: herbrine8403/Amethyst-iOS-MyRemastered
+          ref: 70b8bea76a0ac97483b3e86b54330dfef948cb07
+          path: amethyst
+          submodules: recursive
+          lfs: false
+          persist-credentials: false
+
+      - name: Verify and apply JIT patch
+        run: |
+          set -euo pipefail
+          mkdir -p build-config/out
+          python3 build-config/scripts/apply_patch.py amethyst | tee build-config/out/patch-check.log
+          git -C amethyst submodule status --recursive > build-config/out/submodules.txt
+          cp build-config/manifest.json build-config/out/source-manifest.json
+
+      - name: Select Xcode 15.4 and install build tools
+        run: |
+          set -euo pipefail
+          sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
+          xcodebuild -version
+          brew install make ldid wget
+          brew install --cask temurin@8
+          /usr/libexec/java_home -v 1.8
+          cmake --version
+
+      - name: Build full standard IPA
+        working-directory: amethyst
+        run: |
+          set -euo pipefail
+          export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+          gmake -j"$(sysctl -n hw.ncpu)" package \
+            PLATFORM=2 VERSION=5.1.0 BUILD_MOBILEGL=0 SLIMMED=0 \
+            2>&1 | tee ../build-config/out/build.log
+          dsymutil --arch arm64 \
+            artifacts/Payload/AngelAuraAmethyst.app/AngelAuraAmethyst \
+            -o artifacts/AngelAuraAmethyst.dSYM
+
+      - name: Verify IPA contents and checksum
+        run: |
+          set -euo pipefail
+          cp amethyst/artifacts/com.air-devs.air-5.1.0-ios.ipa \
+            build-config/out/Amethyst-5.1.0-JIT-fix.ipa
+          python3 build-config/scripts/verify_ipa.py \
+            build-config/out/Amethyst-5.1.0-JIT-fix.ipa \
+            --report build-config/out/verification.json
+          cd build-config/out
+          shasum -a 256 Amethyst-5.1.0-JIT-fix.ipa > SHA256SUMS.txt
+          {
+            echo '### Amethyst 5.1.0 JIT fix'
+            echo 'Full standard IPA; Java 8, 17, 21, and 25 included.'
+            echo 'Download the Amethyst-5.1.0-JIT-fix artifact below and extract its IPA.'
+            echo 'Sideload signing is required. Real-device startup-order testing is still required.'
+            echo
+            echo '```'
+            cat SHA256SUMS.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload IPA and verification
+        uses: actions/upload-artifact@v4
+        with:
+          name: Amethyst-5.1.0-JIT-fix
+          path: |
+            build-config/out/Amethyst-5.1.0-JIT-fix.ipa
+            build-config/out/SHA256SUMS.txt
+            build-config/out/verification.json
+            build-config/out/source-manifest.json
+            build-config/out/submodules.txt
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+      - name: Upload debug symbols
+        uses: actions/upload-artifact@v4
+        with:
+          name: Amethyst-5.1.0-JIT-fix-dSYM
+          path: amethyst/artifacts/AngelAuraAmethyst.dSYM
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-diagnostics
+          path: |
+            build-config/out/*.log
+            amethyst/Natives/build/sfpew_build.log
+            amethyst/mobilegl-build.log
+          if-no-files-found: ignore
+          retention-days: 14
