@@ -2,6 +2,16 @@
   "upstream_repository": "herbrine8403/Amethyst-iOS-MyRemastered",
   "upstream_commit": "70b8bea76a0ac97483b3e86b54330dfef948cb07",
   "source_archive": "Amethyst-iOS-MyRemastered-5.1.0.zip",
+  "submodule_mirrors": {
+    "Natives/external/DBNumberedSlider": {
+      "url": "https://github.com/immago/DBNumberedSlider.git",
+      "commit": "4eddc68b5f92247f8afc0f6114d1b92b338749f4"
+    },
+    "Natives/external/fishhook": {
+      "url": "https://github.com/facebook/fishhook.git",
+      "commit": "27bedb2ab670cc51d7be06d538b249564b47cfbf"
+    }
+  },
   "files": {
     "Natives/LauncherRightPanelViewController.m": {
       "original_sha256": "49c12dbd0fc040411b26b804792d6a7b6c664644b9d9cf76f0e3ad8e00a6f133",

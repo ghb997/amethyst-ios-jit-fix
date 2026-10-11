@@ -54,6 +54,8 @@ IPA 只有构建所需的临时签名，不含个人开发者证书。安装后�
 macOS 14、Xcode 15.4、GNU Make、Java 8 和 ldid 与上游已成功的构建配置一致。
 `BUILD_MOBILEGL=0` 使用上游提交中已有的两个 MobileGL 渲染器二进制。
 Git LFS 下载被跳过：上游缺失的 trace replay 图片属于测试资料，iOS 构建不使用它。
+两个失效的子模块 URL 分别映射到 `immago/DBNumberedSlider` 和 `facebook/fishhook`。
+镜像中已核实存在相同的固定提交；依赖版本不变，详情记录在 `manifest.json`。
 Java 运行时仍从上游 Makefile 指定的网址下载；因此固定源提交并不保证逐字节可复现。
 
 Actions 会检查补丁前后 SHA-256、IPA ZIP 完整性、主程序中的新诊断字符串、JIT 脚本、

@@ -37,9 +37,18 @@ jobs:
           repository: herbrine8403/Amethyst-iOS-MyRemastered
           ref: 70b8bea76a0ac97483b3e86b54330dfef948cb07
           path: amethyst
-          submodules: recursive
+          submodules: false
           lfs: false
           persist-credentials: false
+
+      - name: Fetch pinned submodules from available mirrors
+        working-directory: amethyst
+        run: |
+          set -euo pipefail
+          git submodule init
+          git config submodule.Natives/external/DBNumberedSlider.url https://github.com/immago/DBNumberedSlider.git
+          git config submodule.Natives/external/fishhook.url https://github.com/facebook/fishhook.git
+          git submodule update --init --recursive --depth 1
 
       - name: Verify and apply JIT patch
         run: |
